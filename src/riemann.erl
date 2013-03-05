@@ -9,10 +9,12 @@
 %% API
 -export([
   start/0,
+  stop/0,
   start_link/0,
   send/1,
   event/1,
   send_event/1,
+  state/1,
   sge/0
 ]).
 
@@ -26,6 +28,12 @@
   code_change/3
 ]).
 
+%% For private use
+-export([
+  set_event_val/3,
+  set_state_val/3
+]).
+
 -include("riemann_pb.hrl").
 
 -record(state, {
@@ -37,28 +45,41 @@
 
 -define(UDP_MAX_SIZE, 16384).
 
--type riemann_event() :: #riemannevent{}.
+-opaque riemann_event() :: #riemannevent{}.
+-opaque riemann_state() :: #riemannstate{}.
 -type send_response() :: ok | {error, _Reason}.
 
+-type r_time() :: {time, non_neg_integer()}.
+-type r_state() :: {state, string()}.
+-type r_service() :: {service, string()}.
+-type r_host() :: {host, string()}.
+-type r_description() :: {description, string()}.
+-type r_tags() :: {tags, [string()]}.
+-type r_ttl() :: {ttl, float()}.
+
 -type event_metric() :: {metric, number()}.
--type event_time() :: {time, non_neg_integer()}.
--type event_state() :: {state, string()}.
--type event_service() :: {service, string()}.
--type event_host() :: {host, string()}.
--type event_description() :: {description, string()}.
--type event_tags() :: {tags, [string()]}.
--type event_ttl() :: {ttl, float()}.
 -type event_attributes() :: {attributes, [{string(), string()}]}.
 -type event_opts() :: 
     event_metric()
-  | event_time() 
-  | event_state() 
-  | event_service() 
-  | event_host() 
-  | event_description() 
-  | event_tags() 
-  | event_ttl() 
-  | event_attributes().
+  | event_attributes()
+  | r_state() 
+  | r_service() 
+  | r_host() 
+  | r_description() 
+  | r_tags() 
+  | r_ttl() 
+  | r_time().
+
+-type state_once() :: {once, boolean()}.
+-type state_opts() ::
+    state_once()
+  | r_state() 
+  | r_service() 
+  | r_host() 
+  | r_description() 
+  | r_tags() 
+  | r_ttl() 
+  | r_time().
 
 %%%===================================================================
 %%% API
@@ -78,17 +99,31 @@ start_link() ->
 event(Vals) ->
   create_event(Vals).
 
+%% @doc Creates a riemann state. It does not send it to the riemann server.
+-spec state([state_opts()]) -> riemann_state().
+state(Vals) ->
+  create_state(Vals).
+
 %% @doc Shortcut for creating and sending an event in one go
 -spec send_event([event_opts()]) -> send_response().
 send_event(Vals) ->
   send([create_event(Vals)]).
 
-%% @doc Sends an event, or a list of events to the riemann server 
-%%      the application is connected to.
--spec send([riemann_event()] | riemann_event()) -> send_response().
-send(#riemannevent{}=Event) -> send([Event]);
-send(Events) ->
-  gen_server:call(?MODULE, {send, Events}).
+%% @doc The send command is rather heavily overloaded.
+%%      It can be used to send a single or a list of events,
+%%      a single or a list of state messages,
+%%      or as a convenience method for sending an event
+%%      using the send/2 call of send(<ServiceName>, <Metric>).
+-spec send(
+      [riemann_event()] | riemann_event()
+    | [riemann_state()] | riemann_state()
+    ) -> send_response().
+send(Entities) when is_list(Entities) ->
+  gen_server:call(?MODULE, {send, Entities});
+send(Entity) -> send([Entity]).
+
+stop() ->
+  gen_server:cast(?MODULE, stop).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -102,13 +137,16 @@ init([]) ->
     Other -> Other
   end.
 
-handle_call({send, Events}, _From, S0) ->
-  {Reply, S1} = send_events(Events, S0),
+handle_call({send, Entities}, _From, S0) ->
+  {Reply, S1} = send_entities(Entities, S0),
   {reply, Reply, S1};
 
 handle_call(_Request, _From, State) ->
   Reply = ok,
   {reply, Reply, State}.
+
+handle_cast(stop, S) ->
+  {stop, normal, S};
 
 handle_cast(_Msg, State) ->
   {noreply, State}.
@@ -161,9 +199,15 @@ get_env(Name, Default) ->
     _ -> Default
   end.
 
-send_events(Events, State) ->
-  Msg = #riemannmsg{events = Events},
-  BinMsg = riemann_pb:encode_msg(Msg),
+send_entities(Entities, State) ->
+  {Events, States} = lists:splitwith(fun(#riemannevent{}=_) -> true;
+                                        (_) -> false
+                                     end, Entities),
+  Msg = #riemannmsg{
+      events = Events,
+      states = States
+  },
+  BinMsg = riemann_pb:encode_riemannmsg(Msg),
   case byte_size(BinMsg) > ?UDP_MAX_SIZE of
     true -> 
       send_with_tcp(BinMsg, State);
@@ -202,9 +246,12 @@ await_reply(TcpSocket) ->
   end.
 
 decode_response(<<MsgLength:32/integer-big, Data/binary>>) ->
+  lager:info("Message of length: ~p", [MsgLength]),
+  lager:info("Data length: ~p", [byte_size(Data)]),
   case Data of
     <<Msg:MsgLength/binary, _/binary>> ->
-      riemann_pb:decode_msg(Msg);
+      lager:info("Got a reply that's now being decoded"),
+      riemann_pb:decode_riemannmsg(Msg);
     _ ->
       lager:error("Failed at decoding response from riemann"),
       #riemannmsg{
@@ -216,27 +263,21 @@ decode_response(<<MsgLength:32/integer-big, Data/binary>>) ->
 send_with_udp(Msg, #state{udp_socket=UdpSocket, host=Host, port=Port}) ->
   gen_udp:send(UdpSocket, Host, Port, Msg).
 
+%% Creating events
+
 create_event(Vals) ->
-  create_base_event(Vals, #riemannevent{}).
+  Event = create_base(Vals, #riemannevent{}, fun set_event_val/3, [attributes]),
+  Event1 = add_metric_value(Vals, Event),
+  set_event_host(Event1).
 
-create_base_event(Vals, Event) ->
-  Event1 = lists:foldl(fun(Key, E) ->
-          case proplists:get_value(Key, Vals) of
-            undefined -> E;
-            Value -> set_val(Key, Value, E)
-          end
-      end, Event, [time, state, service, host, description, tags, ttl, attributes]),
-  Event2 = add_metric_value(Vals, Event1),
-  set_default_host(Event2).
-
-set_val(time, V, E) -> E#riemannevent{time=V};
-set_val(state, V, E) -> E#riemannevent{state=V};
-set_val(service, V, E) -> E#riemannevent{service=V};
-set_val(host, V, E) -> E#riemannevent{host=V};
-set_val(description, V, E) -> E#riemannevent{description=V};
-set_val(tags, V, E) -> E#riemannevent{tags=V};
-set_val(ttl, V, E) -> E#riemannevent{ttl=V};
-set_val(attributes, V, E) -> E#riemannevent{attributes=V}.
+set_event_val(time, V, E) -> E#riemannevent{time=V};
+set_event_val(state, V, E) -> E#riemannevent{state=V};
+set_event_val(service, V, E) -> E#riemannevent{service=V};
+set_event_val(host, V, E) -> E#riemannevent{host=V};
+set_event_val(description, V, E) -> E#riemannevent{description=V};
+set_event_val(tags, V, E) -> E#riemannevent{tags=V};
+set_event_val(ttl, V, E) -> E#riemannevent{ttl=V};
+set_event_val(attributes, V, E) -> E#riemannevent{attributes=V}.
 
 add_metric_value(Vals, Event) ->
   case proplists:get_value(metric, Vals, 0) of
@@ -246,11 +287,42 @@ add_metric_value(Vals, Event) ->
       Event#riemannevent{metric_f = V, metric_d = V}
   end.
 
-set_default_host(Event) ->
+set_event_host(Event) ->
   case Event#riemannevent.host of
     undefined -> Event#riemannevent{host = default_node_name()};
     _ -> Event
   end.
+
+%% Creating states
+
+create_state(Vals) ->
+  State = create_base(Vals, #riemannstate{}, fun set_state_val/3, [once]),
+  set_state_host(State).
+
+set_state_host(State) ->
+  case State#riemannstate.host of
+    undefined -> State#riemannstate{host = default_node_name()};
+    _ -> State
+  end.
+
+set_state_val(time, V, S) -> S#riemannstate{time=V};
+set_state_val(state, V, S) -> S#riemannstate{state=V};
+set_state_val(service, V, S) -> S#riemannstate{service=V};
+set_state_val(host, V, S) -> S#riemannstate{host=V};
+set_state_val(description, V, S) -> S#riemannstate{description=V};
+set_state_val(tags, V, S) -> S#riemannstate{tags=V};
+set_state_val(ttl, V, S) -> S#riemannstate{ttl=V};
+set_state_val(once, V, S) -> S#riemannstate{once=V}.
+
+%% Shared creation funs
+
+create_base(Vals, I, F, AdditionalFields) ->
+  lists:foldl(fun(Key, E) ->
+          case proplists:get_value(Key, Vals) of
+            undefined -> E;
+            Value -> F(Key, Value, E)
+          end
+      end, I, [time, state, service, host, description, tags, ttl | AdditionalFields]).
 
 default_node_name() ->
   atom_to_list(node()).
@@ -264,8 +336,8 @@ default_node_name() ->
 e() ->
   #riemannevent{metric_f = 0.0}.
 
-create_base_event_test() ->
-  CE = fun(Ps) -> create_base_event(Ps, e()) end,
+create_base_test() ->
+  CE = fun(Ps) -> create_base(Ps, e(), fun set_event_val/3, [attributes]) end,
   ?assertEqual(1, (CE([{time,1}]))#riemannevent.time),
   ?assertEqual("ok", (CE([{state,"ok"}]))#riemannevent.state),
   ?assertEqual("test", (CE([{service,"test"}]))#riemannevent.service),
@@ -288,11 +360,90 @@ set_metric_value_test() ->
 default_node_name_test() ->
   ?assertEqual("nonode@nohost", default_node_name()).
 
-set_default_host_test() ->
+set_event_host_test() ->
   E = #riemannevent{host = "host"},
-  E1 = set_default_host(E),
+  E1 = set_event_host(E),
   ?assertEqual("host", E1#riemannevent.host),
-  E2 = set_default_host(#riemannevent{}),
+  E2 = set_event_host(#riemannevent{}),
   ?assertEqual(default_node_name(), E2#riemannevent.host).
+
+set_state_host_test() ->
+  E = #riemannstate{host = "host"},
+  E1 = set_state_host(E),
+  ?assertEqual("host", E1#riemannstate.host),
+  E2 = set_state_host(#riemannstate{}),
+  ?assertEqual(default_node_name(), E2#riemannstate.host).
+
+-record(c, {
+    tcp,
+    udp,
+    close
+}).
+
+conn() ->
+  {ok, UdpSocket} = gen_udp:open(5555, [binary, {active, false}]),
+  {ok, TcpSocket} = gen_tcp:listen(5555, [binary, {active, false}, {nodelay, true}, {exit_on_close, true}]),
+  #c{
+    udp = UdpSocket,
+    tcp = TcpSocket,
+    close = fun() ->
+        ok = gen_udp:close(UdpSocket),
+        ok = gen_tcp:close(TcpSocket)
+    end
+  }.
+
+end_to_end_event_udp_test() ->
+  E = event([{service, "test service"}]),
+  F = fun(#riemannmsg{events = Events}) -> Events end,
+  end_to_end_udp(E, F).
+
+end_to_end_state_udp_test() ->
+  E = state([{service, "test service"}]),
+  F = fun(#riemannmsg{states = States}) -> States end,
+  end_to_end_udp(E, F).
+
+end_to_end_udp(E, F) ->
+  C = conn(),
+  start_link(),
+  ?assertEqual(ok, send(E)),
+  {ok, {_, _, BinMsg}} = gen_udp:recv(C#c.udp, 0),
+  Entity = F(riemann_pb:decode_riemannmsg(BinMsg)),
+  ?assertEqual(1, length(Entity)),
+  (C#c.close)(),
+  stop().
+
+end_to_end_event_state_tcp_test() ->
+  Events = [event([{service, "test service"}, {state, "ok"}, {time, 1000020202}]) || _ <- lists:seq(1, 350)],
+  States = [state([{service, "test service"}, {state, "ok"}, {time, 1000020202}]) || _ <- lists:seq(1, 350)],
+  F = fun(#riemannmsg{
+            events=E,
+            states=S
+            }) ->
+      E =:= Events andalso S =:= States;
+          (_) -> 
+      false
+  end,
+  end_to_end_tcp(lists:flatten([Events,States]), F).
+
+end_to_end_tcp(Es, Validate) ->
+  C = conn(),
+  start_link(),
+  S = self(),
+  spawn(fun() ->
+        R = send(Es),
+        S ! {result, R}
+    end),
+  {ok, Socket} = gen_tcp:accept(C#c.tcp),
+  {ok, <<Length:32/integer-big>>} = gen_tcp:recv(Socket, 4),
+  {ok, BinMsg} = gen_tcp:recv(Socket, Length),
+  ?assert(Validate(riemann_pb:decode_riemannmsg(BinMsg))),
+  Reply = riemann_pb:encode_riemannmsg(#riemannmsg{
+        ok = true
+        }),
+  gen_tcp:send(Socket, <<(byte_size(Reply)):32/integer-big, Reply/binary>>),
+  gen_tcp:close(Socket),
+  (C#c.close)(),
+  receive {result, ok} -> ok end,
+  stop().
 
 -endif.
