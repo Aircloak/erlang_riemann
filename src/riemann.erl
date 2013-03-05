@@ -28,7 +28,7 @@
 
 -include("riemann_pb.hrl").
 
--record(srv_state, {
+-record(state, {
     tcp_socket,
     udp_socket,
     host,
@@ -95,7 +95,7 @@ send(Events) ->
 %%%===================================================================
 
 init([]) ->
-  case setup_riemann_connectivity(#srv_state{}) of
+  case setup_riemann_connectivity(#state{}) of
     {error, Reason} ->
       lager:error("Could not setup connections to riemann: ~p", [Reason]),
       {stop, {shutdown, Reason}};
@@ -116,7 +116,7 @@ handle_cast(_Msg, State) ->
 handle_info(_Info, State) ->
   {noreply, State}.
 
-terminate(_Reason, #srv_state{udp_socket=UdpSocket, tcp_socket=TcpSocket}) ->
+terminate(_Reason, #state{udp_socket=UdpSocket, tcp_socket=TcpSocket}) ->
   gen_udp:close(UdpSocket),
   gen_tcp:close(TcpSocket),
   ok.
@@ -131,24 +131,24 @@ code_change(_OldVsn, State, _Extra) ->
 setup_riemann_connectivity(S) ->
   Host = get_env(host, "127.0.0.1"),
   Port = get_env(port, 5555),
-  setup_udp_socket(S#srv_state{
+  setup_udp_socket(S#state{
     host = Host,
     port = Port
   }).
 
-setup_udp_socket(#srv_state{udp_socket = undefined}=S) ->
+setup_udp_socket(#state{udp_socket = undefined}=S) ->
   {ok, UdpSocket} = gen_udp:open(0, [binary, {active,false}]),
-  setup_tcp_socket(S#srv_state{udp_socket = UdpSocket});
+  setup_tcp_socket(S#state{udp_socket = UdpSocket});
 setup_udp_socket(S) ->
   setup_tcp_socket(S).
 
-setup_tcp_socket(#srv_state{tcp_socket=undefined, host=Host, port=Port}=S) ->
+setup_tcp_socket(#state{tcp_socket=undefined, host=Host, port=Port}=S) ->
   Options = [binary, {active,false}, {keepalive, true}, {nodelay, true}],
   Timeout = 10000,
   case gen_tcp:connect(Host, Port, Options, Timeout) of
     {ok, TcpSocket} ->
       ok = gen_tcp:controlling_process(TcpSocket, self()),
-      {ok, S#srv_state{tcp_socket = TcpSocket}};
+      {ok, S#state{tcp_socket = TcpSocket}};
     {error, Reason} ->
       lager:error("Failed opening a Tcp socket to riemann with reason ~p", [Reason]),
       {error, Reason}
@@ -171,7 +171,7 @@ send_events(Events, State) ->
       {send_with_udp(BinMsg, State), State}
   end.
 
-send_with_tcp(Msg, #srv_state{tcp_socket=TcpSocket}=S) ->
+send_with_tcp(Msg, #state{tcp_socket=TcpSocket}=S) ->
   MessageSize = byte_size(Msg),
   MsgWithLength = <<MessageSize:32/integer-big, Msg/binary>>,
   case gen_tcp:send(TcpSocket, MsgWithLength) of
@@ -179,7 +179,7 @@ send_with_tcp(Msg, #srv_state{tcp_socket=TcpSocket}=S) ->
       {await_reply(TcpSocket), S};
     {error, closed} ->
       lager:info("Connection to riemann is closed. Reestablishing connection."),
-      case setup_riemann_connectivity(S#srv_state{tcp_socket = undefined}) of
+      case setup_riemann_connectivity(S#state{tcp_socket = undefined}) of
         {ok, S1} ->
           send_with_tcp(Msg, S1);
         {error, Reason} ->
@@ -213,7 +213,7 @@ decode_response(<<MsgLength:32/integer-big, Data/binary>>) ->
       }
   end.
 
-send_with_udp(Msg, #srv_state{udp_socket=UdpSocket, host=Host, port=Port}) ->
+send_with_udp(Msg, #state{udp_socket=UdpSocket, host=Host, port=Port}) ->
   gen_udp:send(UdpSocket, Host, Port, Msg).
 
 create_event(Vals) ->
