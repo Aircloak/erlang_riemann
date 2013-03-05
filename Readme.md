@@ -61,3 +61,7 @@ Then in your `*.app` file, add `riemann` as a dependent application:
 We welcome contributions as pull requests.
 Please make a fork of this repository, implement your changes in a feature
 branch and make a pull request.
+
+# License
+
+[Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0)
