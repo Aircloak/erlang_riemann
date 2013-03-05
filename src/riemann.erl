@@ -37,7 +37,7 @@
 
 -define(UDP_MAX_SIZE, 16384).
 
--type riemann_event() :: #event{}.
+-type riemann_event() :: #riemannevent{}.
 -type send_response() :: ok | {error, _Reason}.
 
 -type event_metric() :: {metric, number()}.
@@ -86,7 +86,7 @@ send_event(Vals) ->
 %% @doc Sends an event, or a list of events to the riemann server 
 %%      the application is connected to.
 -spec send([riemann_event()] | riemann_event()) -> send_response().
-send(#event{}=Event) -> send([Event]);
+send(#riemannevent{}=Event) -> send([Event]);
 send(Events) ->
   gen_server:call(?MODULE, {send, Events}).
 
@@ -162,7 +162,7 @@ get_env(Name, Default) ->
   end.
 
 send_events(Events, State) ->
-  Msg = #msg{events = Events},
+  Msg = #riemannmsg{events = Events},
   BinMsg = riemann_pb:encode_msg(Msg),
   case byte_size(BinMsg) > ?UDP_MAX_SIZE of
     true -> 
@@ -195,8 +195,8 @@ await_reply(TcpSocket) ->
   case gen_tcp:recv(TcpSocket, 0, 3000) of
     {ok, BinResp} ->
       case decode_response(BinResp) of
-        #msg{ok=true} -> ok;
-        #msg{ok=false, error=Reason} -> {error, Reason}
+        #riemannmsg{ok=true} -> ok;
+        #riemannmsg{ok=false, error=Reason} -> {error, Reason}
       end;
     Other -> Other
   end.
@@ -207,7 +207,7 @@ decode_response(<<MsgLength:32/integer-big, Data/binary>>) ->
       riemann_pb:decode_msg(Msg);
     _ ->
       lager:error("Failed at decoding response from riemann"),
-      #msg{
+      #riemannmsg{
         ok = false,
         error = "Decoding response from Riemann failed"
       }
@@ -217,7 +217,7 @@ send_with_udp(Msg, #srv_state{udp_socket=UdpSocket, host=Host, port=Port}) ->
   gen_udp:send(UdpSocket, Host, Port, Msg).
 
 create_event(Vals) ->
-  create_base_event(Vals, #event{}).
+  create_base_event(Vals, #riemannevent{}).
 
 create_base_event(Vals, Event) ->
   Event1 = lists:foldl(fun(Key, E) ->
@@ -229,26 +229,26 @@ create_base_event(Vals, Event) ->
   Event2 = add_metric_value(Vals, Event1),
   set_default_host(Event2).
 
-set_val(time, V, E) -> E#event{time=V};
-set_val(state, V, E) -> E#event{state=V};
-set_val(service, V, E) -> E#event{service=V};
-set_val(host, V, E) -> E#event{host=V};
-set_val(description, V, E) -> E#event{description=V};
-set_val(tags, V, E) -> E#event{tags=V};
-set_val(ttl, V, E) -> E#event{ttl=V};
-set_val(attributes, V, E) -> E#event{attributes=V}.
+set_val(time, V, E) -> E#riemannevent{time=V};
+set_val(state, V, E) -> E#riemannevent{state=V};
+set_val(service, V, E) -> E#riemannevent{service=V};
+set_val(host, V, E) -> E#riemannevent{host=V};
+set_val(description, V, E) -> E#riemannevent{description=V};
+set_val(tags, V, E) -> E#riemannevent{tags=V};
+set_val(ttl, V, E) -> E#riemannevent{ttl=V};
+set_val(attributes, V, E) -> E#riemannevent{attributes=V}.
 
 add_metric_value(Vals, Event) ->
   case proplists:get_value(metric, Vals, 0) of
     V when is_integer(V) ->
-      Event#event{metric_f = V * 1.0, metric_sint64 = V};
+      Event#riemannevent{metric_f = V * 1.0, metric_sint64 = V};
     V ->
-      Event#event{metric_f = V, metric_d = V}
+      Event#riemannevent{metric_f = V, metric_d = V}
   end.
 
 set_default_host(Event) ->
-  case Event#event.host of
-    undefined -> Event#event{host = default_node_name()};
+  case Event#riemannevent.host of
+    undefined -> Event#riemannevent{host = default_node_name()};
     _ -> Event
   end.
 
@@ -262,36 +262,37 @@ default_node_name() ->
 -ifdef(TEST).
 
 e() ->
-  #event{metric_f = 0.0}.
+  #riemannevent{metric_f = 0.0}.
 
 create_base_event_test() ->
   CE = fun(Ps) -> create_base_event(Ps, e()) end,
-  ?assertEqual(1, (CE([{time,1}]))#event.time),
-  ?assertEqual("ok", (CE([{state,"ok"}]))#event.state),
-  ?assertEqual("test", (CE([{service,"test"}]))#event.service),
-  ?assertEqual("host1", (CE([{host,"host1"}]))#event.host),
-  ?assertEqual("desc", (CE([{description,"desc"}]))#event.description),
-  ?assertEqual(["one", "two"], (CE([{tags,["one", "two"]}]))#event.tags),
-  ?assertEqual(1.0, (CE([{ttl,1.0}]))#event.ttl),
-  ?assertEqual([#attribute{key="key"}], (CE([{attributes,[#attribute{key="key"}]}]))#event.attributes).
+  ?assertEqual(1, (CE([{time,1}]))#riemannevent.time),
+  ?assertEqual("ok", (CE([{state,"ok"}]))#riemannevent.state),
+  ?assertEqual("test", (CE([{service,"test"}]))#riemannevent.service),
+  ?assertEqual("host1", (CE([{host,"host1"}]))#riemannevent.host),
+  ?assertEqual("desc", (CE([{description,"desc"}]))#riemannevent.description),
+  ?assertEqual(["one", "two"], (CE([{tags,["one", "two"]}]))#riemannevent.tags),
+  ?assertEqual(1.0, (CE([{ttl,1.0}]))#riemannevent.ttl),
+  ?assertEqual([#riemannattribute{key="key"}], 
+               (CE([{attributes,[#riemannattribute{key="key"}]}]))#riemannevent.attributes).
 
 set_metric_value_test() ->
-  AM = fun(Ps) -> add_metric_value(Ps, #event{metric_f = 0.0}) end,
+  AM = fun(Ps) -> add_metric_value(Ps, #riemannevent{metric_f = 0.0}) end,
   E1 = AM([{metric, 1}]),
-  ?assertEqual(1, E1#event.metric_sint64),
-  ?assertEqual(1.0, E1#event.metric_f),
+  ?assertEqual(1, E1#riemannevent.metric_sint64),
+  ?assertEqual(1.0, E1#riemannevent.metric_f),
   E2 = AM([{metric, 1.0}]),
-  ?assertEqual(1.0, E2#event.metric_d),
-  ?assertEqual(1.0, E2#event.metric_f).
+  ?assertEqual(1.0, E2#riemannevent.metric_d),
+  ?assertEqual(1.0, E2#riemannevent.metric_f).
 
 default_node_name_test() ->
   ?assertEqual("nonode@nohost", default_node_name()).
 
 set_default_host_test() ->
-  E = #event{host = "host"},
+  E = #riemannevent{host = "host"},
   E1 = set_default_host(E),
-  ?assertEqual("host", E1#event.host),
-  E2 = set_default_host(#event{}),
-  ?assertEqual(default_node_name(), E2#event.host).
+  ?assertEqual("host", E1#riemannevent.host),
+  E2 = set_default_host(#riemannevent{}),
+  ?assertEqual(default_node_name(), E2#riemannevent.host).
 
 -endif.

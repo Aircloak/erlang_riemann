@@ -1,6 +1,6 @@
--ifndef(STATE_PB_H).
--define(STATE_PB_H, true).
--record(state, {
+-ifndef(RIEMANNSTATE_PB_H).
+-define(RIEMANNSTATE_PB_H, true).
+-record(riemannstate, {
     time,
     state,
     service,
@@ -12,9 +12,9 @@
 }).
 -endif.
 
--ifndef(EVENT_PB_H).
--define(EVENT_PB_H, true).
--record(event, {
+-ifndef(RIEMANNEVENT_PB_H).
+-define(RIEMANNEVENT_PB_H, true).
+-record(riemannevent, {
     time,
     state,
     service,
@@ -29,16 +29,16 @@
 }).
 -endif.
 
--ifndef(RQUERY_PB_H).
--define(RQUERY_PB_H, true).
--record(rquery, {
+-ifndef(RIEMANNQUERY_PB_H).
+-define(RIEMANNQUERY_PB_H, true).
+-record(riemannquery, {
     string
 }).
 -endif.
 
--ifndef(MSG_PB_H).
--define(MSG_PB_H, true).
--record(msg, {
+-ifndef(RIEMANNMSG_PB_H).
+-define(RIEMANNMSG_PB_H, true).
+-record(riemannmsg, {
     ok,
     error,
     states = [],
@@ -47,9 +47,9 @@
 }).
 -endif.
 
--ifndef(ATTRIBUTE_PB_H).
--define(ATTRIBUTE_PB_H, true).
--record(attribute, {
+-ifndef(RIEMANNATTRIBUTE_PB_H).
+-define(RIEMANNATTRIBUTE_PB_H, true).
+-record(riemannattribute, {
     key = erlang:error({required, key}),
     value
 }).
