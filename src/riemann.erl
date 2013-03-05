@@ -39,8 +39,8 @@
 -include("riemann_pb.hrl").
 
 -record(state, {
-    tcp_socket,
-    udp_socket,
+    tcp_socket = undefined,
+    udp_socket = undefined,
     host,
     port
 }).
@@ -196,7 +196,7 @@ setup_riemann_connectivity(S) ->
     port = Port
   }).
 
-setup_udp_socket(#state{udp_socket = undefined}=S) ->
+setup_udp_socket(#state{udp_socket=undefined}=S) ->
   {ok, UdpSocket} = gen_udp:open(0, [binary, {active,false}]),
   setup_tcp_socket(S#state{udp_socket = UdpSocket});
 setup_udp_socket(S) ->

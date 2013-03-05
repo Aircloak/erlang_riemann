@@ -4,3 +4,4 @@ deps/*
 ebin
 log
 .DS_Store
+*_plt
