@@ -1,5 +1,6 @@
 *.beam
 .eunit
 deps/*
-ebin/*
+ebin
+log
 .DS_Store
