@@ -56,6 +56,17 @@ Then in your `*.app` file, add `riemann` as a dependent application:
       {env, []}
      ]}.
 
+Riemann will default to sending the metrics to localhost on port 5555.
+You can set the remote riemann host in your config:
+
+    [
+      ...
+      {riemann, [
+        {host, "graphite.host.com"},
+        {port, 5555}
+      ]}
+    ].
+
 # Contributions
 
 We welcome contributions as pull requests.
