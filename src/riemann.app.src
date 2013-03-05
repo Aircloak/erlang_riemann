@@ -1,11 +1,12 @@
 {application, riemann,
  [
-  {description, ""},
+  {description, "Erlang client for the riemann monitoring system"},
   {vsn, "1"},
   {registered, []},
   {applications, [
                   kernel,
-                  stdlib
+                  stdlib,
+                  lager
                  ]},
   {mod, { riemann_app, []}},
   {env, []}
