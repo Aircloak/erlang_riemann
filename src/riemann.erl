@@ -12,9 +12,11 @@
   stop/0,
   start_link/0,
   send/1,
+  send/2,
   event/1,
   send_event/1,
   state/1,
+  run_query/1,
   sge/0
 ]).
 
@@ -49,9 +51,12 @@
 -opaque riemann_state() :: #riemannstate{}.
 -type send_response() :: ok | {error, _Reason}.
 
+-type r_query() :: string().
+
 -type r_time() :: {time, non_neg_integer()}.
 -type r_state() :: {state, string()}.
--type r_service() :: {service, string()}.
+-type r_service_name() :: string().
+-type r_service() :: {service, r_service_name()}.
 -type r_host() :: {host, string()}.
 -type r_description() :: {description, string()}.
 -type r_tags() :: {tags, [string()]}.
@@ -121,6 +126,13 @@ send_event(Vals) ->
 send(Entities) when is_list(Entities) ->
   gen_server:call(?MODULE, {send, Entities});
 send(Entity) -> send([Entity]).
+-spec send(r_service_name(), number()) -> send_response().
+send(Service, Metric) ->
+  send([create_event([{service, Service}, {metric, Metric}])]).
+
+-spec run_query(r_query()) -> send_response().
+run_query(Query) ->
+  gen_server:call(?MODULE, {run_query, Query}).
 
 stop() ->
   gen_server:cast(?MODULE, stop).
@@ -138,7 +150,17 @@ init([]) ->
   end.
 
 handle_call({send, Entities}, _From, S0) ->
-  {Reply, S1} = send_entities(Entities, S0),
+  {Reply, S1} = case send_entities(Entities, S0) of
+    {{ok, _}, SN} -> {ok, SN};
+    Other -> Other
+  end,
+  {reply, Reply, S1};
+
+handle_call({run_query, Query}, _From, S0) ->
+  {Reply, S1} = case run_query0(Query, S0) of
+    {{ok, #riemannmsg{events=Events}}, SN} -> {{ok, Events}, SN};
+    Other -> Other
+  end,
   {reply, Reply, S1};
 
 handle_call(_Request, _From, State) ->
@@ -199,6 +221,15 @@ get_env(Name, Default) ->
     _ -> Default
   end.
 
+run_query0(Query, State) ->
+  Msg = #riemannmsg{
+      pb_query = #riemannquery{
+        string = Query
+      }
+  },
+  BinMsg = riemann_pb:encode_riemannmsg(Msg),
+  send_with_tcp(BinMsg, State).
+
 send_entities(Entities, State) ->
   {Events, States} = lists:splitwith(fun(#riemannevent{}=_) -> true;
                                         (_) -> false
@@ -239,18 +270,15 @@ await_reply(TcpSocket) ->
   case gen_tcp:recv(TcpSocket, 0, 3000) of
     {ok, BinResp} ->
       case decode_response(BinResp) of
-        #riemannmsg{ok=true} -> ok;
+        #riemannmsg{ok=true} = Msg -> {ok, Msg};
         #riemannmsg{ok=false, error=Reason} -> {error, Reason}
       end;
     Other -> Other
   end.
 
 decode_response(<<MsgLength:32/integer-big, Data/binary>>) ->
-  lager:info("Message of length: ~p", [MsgLength]),
-  lager:info("Data length: ~p", [byte_size(Data)]),
   case Data of
     <<Msg:MsgLength/binary, _/binary>> ->
-      lager:info("Got a reply that's now being decoded"),
       riemann_pb:decode_riemannmsg(Msg);
     _ ->
       lager:error("Failed at decoding response from riemann"),
