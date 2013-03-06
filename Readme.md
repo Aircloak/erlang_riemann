@@ -4,6 +4,11 @@ Riemann
 This is a [riemann](http://riemann.io/) client written in Erlang.
 It supports sending events, states, and remotely running queries.
 
+Build status
+------------
+
+[![Build Status](https://travis-ci.org/Aircloak/erlang_riemann.png)](https://travis-ci.org/Aircloak/erlang_riemann)
+
 # API
 
 The API is all under the `riemann` module.
