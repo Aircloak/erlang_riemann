@@ -38,8 +38,7 @@
   event/1,
   send_event/1,
   state/1,
-  run_query/1,
-  sge/0
+  run_query/1
 ]).
 
 %% gen_server callbacks
@@ -111,9 +110,6 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
-
-sge() ->
-  send([event([{service, "test"}, {metric,10}]) || _ <- lists:seq(1,1000)]).
 
 start() ->
   application:start(?MODULE).
