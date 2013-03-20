@@ -67,7 +67,7 @@ You can set the remote riemann host in your config:
     [
       ...
       {riemann, [
-        {host, "graphite.host.com"},
+        {host, "riemann.host.com"},
         {port, 5555}
       ]}
     ].
