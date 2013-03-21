@@ -81,3 +81,7 @@ branch and make a pull request.
 # License
 
 [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0)
+
+# Thanks
+
+- Cameron Bytheway [@CamShaft](https://github.com/CamShaft)
