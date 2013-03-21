@@ -5,3 +5,5 @@ ebin
 log
 .DS_Store
 *_plt
+app.config
+erl_crash.dump
