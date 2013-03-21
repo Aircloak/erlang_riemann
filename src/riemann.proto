@@ -39,7 +39,7 @@ message RiemannMsg {
   optional bool ok = 2;
   optional string error = 3;
   repeated RiemannState states = 4;
-  optional RiemannQuery query = 5;
+  optional RiemannQuery pb_query = 5;
   repeated RiemannEvent events = 6;
 }
 
