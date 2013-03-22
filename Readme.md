@@ -84,4 +84,5 @@ branch and make a pull request.
 
 # Thanks
 
-- Cameron Bytheway [@CamShaft](https://github.com/CamShaft)
+- Cameron Bytheway - [@CamShaft](https://github.com/CamShaft)
+- Tim Shadel - [timshadel](https://github.com/timshadel)
