@@ -245,7 +245,7 @@ run_query0(Query, State) ->
         string = Query
       }
   },
-  BinMsg = riemann_pb:encode_riemannmsg(Msg),
+  BinMsg = iolist_to_binary(riemann_pb:encode_riemannmsg(Msg)),
   send_with_tcp(BinMsg, State).
 
 send_entities(Entities, State) ->
@@ -256,7 +256,7 @@ send_entities(Entities, State) ->
       events = Events,
       states = States
   },
-  BinMsg = riemann_pb:encode_riemannmsg(Msg),
+  BinMsg = iolist_to_binary(riemann_pb:encode_riemannmsg(Msg)),
   case byte_size(BinMsg) > ?UDP_MAX_SIZE of
     true -> 
       send_with_tcp(BinMsg, State);
@@ -483,9 +483,9 @@ end_to_end_tcp(Es, Validate) ->
   {ok, <<Length:32/integer-big>>} = gen_tcp:recv(Socket, 4),
   {ok, BinMsg} = gen_tcp:recv(Socket, Length),
   ?assert(Validate(riemann_pb:decode_riemannmsg(BinMsg))),
-  Reply = riemann_pb:encode_riemannmsg(#riemannmsg{
-        ok = true
-        }),
+  Reply = iolist_to_binary(riemann_pb:encode_riemannmsg(#riemannmsg{
+      ok = true
+  })),
   gen_tcp:send(Socket, <<(byte_size(Reply)):32/integer-big, Reply/binary>>),
   gen_tcp:close(Socket),
   (C#c.close)(),

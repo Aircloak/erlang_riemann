@@ -9,6 +9,16 @@ Build status
 
 [![Build Status](https://travis-ci.org/Aircloak/erlang_riemann.png)](https://travis-ci.org/Aircloak/erlang_riemann)
 
+Project maturity
+------------------
+
+This project is still young.
+While we are using it internally at Aircloak and fixing issues as we find them,
+you might very well consider it non-production ready, or alpha quality, if you
+prefer.
+
+The project is likely to undergo some rapid change.
+
 # API
 
 The API is all under the `riemann` module.
