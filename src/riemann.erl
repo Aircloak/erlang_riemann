@@ -317,11 +317,11 @@ create_event(Vals) ->
   set_event_host(Event1).
 
 set_event_val(time, V, E) -> E#riemannevent{time=V};
-set_event_val(state, V, E) -> E#riemannevent{state=V};
-set_event_val(service, V, E) -> E#riemannevent{service=V};
-set_event_val(host, V, E) -> E#riemannevent{host=V};
-set_event_val(description, V, E) -> E#riemannevent{description=V};
-set_event_val(tags, V, E) -> E#riemannevent{tags=V};
+set_event_val(state, V, E) -> E#riemannevent{state=str(V)};
+set_event_val(service, V, E) -> E#riemannevent{service=str(V)};
+set_event_val(host, V, E) -> E#riemannevent{host=str(V)};
+set_event_val(description, V, E) -> E#riemannevent{description=str(V)};
+set_event_val(tags, Tags, E) -> E#riemannevent{tags=[str(T) || T <- Tags]};
 set_event_val(ttl, V, E) -> E#riemannevent{ttl=V};
 set_event_val(attributes, V, E) -> E#riemannevent{attributes=V}.
 
@@ -352,11 +352,11 @@ set_state_host(State) ->
   end.
 
 set_state_val(time, V, S) -> S#riemannstate{time=V};
-set_state_val(state, V, S) -> S#riemannstate{state=V};
-set_state_val(service, V, S) -> S#riemannstate{service=V};
-set_state_val(host, V, S) -> S#riemannstate{host=V};
-set_state_val(description, V, S) -> S#riemannstate{description=V};
-set_state_val(tags, V, S) -> S#riemannstate{tags=V};
+set_state_val(state, V, S) -> S#riemannstate{state=str(V)};
+set_state_val(service, V, S) -> S#riemannstate{service=str(V)};
+set_state_val(host, V, S) -> S#riemannstate{host=str(V)};
+set_state_val(description, V, S) -> S#riemannstate{description=str(V)};
+set_state_val(tags, Tags, S) -> S#riemannstate{tags=[str(T) || T <- Tags]};
 set_state_val(ttl, V, S) -> S#riemannstate{ttl=V};
 set_state_val(once, V, S) -> S#riemannstate{once=V}.
 
@@ -372,6 +372,9 @@ create_base(Vals, I, F, AdditionalFields) ->
 
 default_node_name() ->
   atom_to_list(node()).
+
+str(V) when is_atom(V) -> atom_to_list(V);
+str(V) -> V.
 
 %%%===================================================================
 %%% Tests
