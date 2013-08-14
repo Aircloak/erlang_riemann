@@ -3,19 +3,19 @@
 all: deps compile
 
 compile:
-	rebar compile
+	@./rebar compile
 
 deps:
-	rebar get-deps
+	@./rebar get-deps
 
 clean:
-	rebar clean
+	@./rebar clean
 
 app:
-	rebar compile skip_deps=true
+	@./rebar compile skip_deps=true
 
 test: all
-	rebar skip_deps=true eunit
+	@./rebar skip_deps=true eunit
 
 #################
 # Starting dummy node
