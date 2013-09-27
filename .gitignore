@@ -7,3 +7,6 @@ log
 *_plt
 app.config
 erl_crash.dump
+
+# Don't include compiled proto headers
+include/*_pb.hrl
