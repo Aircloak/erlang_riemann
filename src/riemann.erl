@@ -33,6 +33,7 @@
   start/0,
   stop/0,
   start_link/0,
+  start_link/1,
   send/1,
   send/2,
   event/1,
@@ -116,6 +117,8 @@ start() ->
 
 start_link() ->
   gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+start_link(Args) ->
+  gen_server:start_link(?MODULE, Args, []).
 
 %% @doc Creates a riemann event. It does not send it to the riemann server.
 -spec event([event_opts()]) -> riemann_event().
