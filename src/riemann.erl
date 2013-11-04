@@ -71,6 +71,7 @@
 -opaque riemann_event() :: #riemannevent{}.
 -opaque riemann_state() :: #riemannstate{}.
 -type send_response() :: ok | {error, _Reason}.
+-type query_response() :: {ok, [#riemannevent{}]} | {error, _Reason}.
 
 -type r_query() :: string().
 
@@ -148,7 +149,7 @@ send(Entity) -> send([Entity]).
 send(Service, Metric) ->
   send([create_event([{service, Service}, {metric, Metric}])]).
 
--spec run_query(r_query()) -> send_response().
+-spec run_query(r_query()) -> query_response().
 run_query(Query) ->
   gen_server:call(?MODULE, {run_query, Query}).
 
