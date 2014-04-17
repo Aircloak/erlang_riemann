@@ -4,6 +4,11 @@ Riemann
 This is a [riemann](http://riemann.io/) client written in Erlang.
 It supports sending events, states, and remotely running queries.
 
+Status
+------
+
+We *no longer* actively maintain this client.
+
 Build status
 ------------
 
