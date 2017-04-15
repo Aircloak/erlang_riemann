@@ -241,7 +241,7 @@ get_env(Name, Default) ->
 
 run_query0(Query, State) ->
   Msg = #riemannmsg{
-      pb_query = #riemannquery{
+      query = #riemannquery{
         string = Query
       }
   },
